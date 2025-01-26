@@ -1,26 +1,24 @@
-import os
-import streamlit as st
-from pathlib import Path
 import logging
+import os
+from io import BytesIO
+from pathlib import Path
 
-import tempfile
 import cv2
+
+# Map display
+import folium
 import numpy as np
 
-from sample_utils.download import download_file
+# Extraction of coordinates from image
+import piexif
+import streamlit as st
+from PIL import ExifTags, Image
+from streamlit_folium import st_folium
 
 # Model
 from ultralytics import YOLO
 
-from PIL import Image, ExifTags
-from io import BytesIO
-
-# Extraction of coordinates from image
-import piexif
-
-# Map display
-import folium
-from streamlit_folium import st_folium
+from sample_utils.download import download_file
 
 # <<< Code starts here >>>
 # Configure logging
@@ -31,7 +29,7 @@ st.set_page_config(
     page_title="Pole Detection App",
     page_icon="🏗️",  # Emoji de poste de eletricidade
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 logo = "./imgs/logo.jpg"
@@ -40,17 +38,21 @@ st.sidebar.image(logo)
 # Paths to models
 HERE = Path(__file__).parent
 ROOT = HERE.parent
-MODEL_URL = "https://raw.githubusercontent.com/Jubilio/pole_detection/main/models/best.pt"
+MODEL_URL = (
+    "https://raw.githubusercontent.com/Jubilio/pole_detection/main/models/best.pt"
+)
 MODEL_LOCAL_PATH = ROOT / "models" / "pole.pt"
 
 # Ensure the models directory exists
 os.makedirs(ROOT / "models", exist_ok=True)
+
 
 # Download file with logging
 def download_file_with_logging(url, local_path, expected_size):
     logger.info(f"Downloading file from {url} to {local_path}")
     download_file(url, local_path, expected_size)
     logger.info(f"Download complete. File saved to {local_path}")
+
 
 # Load model with caching
 @st.cache_resource()
@@ -65,6 +67,7 @@ def load_model():
     model = YOLO(MODEL_LOCAL_PATH)
     logger.info("YOLO model loaded successfully")
     return model
+
 
 # Load the model
 logger.info("About to load the model")
@@ -83,8 +86,13 @@ Upload an image to detect Pole Tension and view their location on a map
 st.markdown(subtitle)
 
 # File upload section
-uploaded_files = st.file_uploader("Upload Images", type=["png", "jpg", "jpeg", "webp"], accept_multiple_files=True)
-score_threshold = st.slider("Confidence Threshold", min_value=0.0, max_value=1.0, value=0.1, step=0.05)
+uploaded_files = st.file_uploader(
+    "Upload Images", type=["png", "jpg", "jpeg", "webp"], accept_multiple_files=True
+)
+score_threshold = st.slider(
+    "Confidence Threshold", min_value=0.0, max_value=1.0, value=0.1, step=0.05
+)
+
 
 # Function to correct image orientation
 def correct_image_orientation(image):
@@ -92,7 +100,7 @@ def correct_image_orientation(image):
         exif = image._getexif()
         if exif is not None:
             for orientation in ExifTags.TAGS.keys():
-                if ExifTags.TAGS[orientation] == 'Orientation':
+                if ExifTags.TAGS[orientation] == "Orientation":
                     break
             exif_orientation = exif.get(orientation)
             if exif_orientation == 3:
@@ -105,27 +113,60 @@ def correct_image_orientation(image):
         logger.error(f"Error correcting image orientation: {e}")
     return image
 
-def extract_gps_info(exif_data):
-    try:
-        gps_info = exif_data.get("GPSInfo")
-        if gps_info:
-            # Garantir que o valor seja convertido corretamente
-            lat = convert_to_degrees(gps_info[2])
-            lon = convert_to_degrees(gps_info[4])
-            return lat, lon
-        else:
-            raise ValueError("No GPSInfo found")
-    except Exception as e:
-        print(f"Error extracting GPS info: {e}")
-        return None
 
-def convert_to_degrees(value):
-    # Converter corretamente tuple para um número decimal
-    d = float(value[0])
-    m = float(value[1])
-    s = float(value[2])
-    
-    return d + (m / 60.0) + (s / 3600.0)
+def extract_gps_info(image_file):
+    """
+    Extracts GPS information from an image file.
+
+    Args:
+    image_file (file object): An opened file object containing the image.
+
+    Returns:
+    tuple: A tuple containing two floats (latitude, longitude) in decimal degrees.
+           Returns (None, None) if GPS information is not available or if an error occurs.
+    """
+    try:
+        image = Image.open(image_file)
+        if "exif" in image.info:
+            exif_data = piexif.load(image.info["exif"])
+            gps_data = exif_data.get("GPS", {})
+            if (
+                piexif.GPSIFD.GPSLatitude in gps_data
+                and piexif.GPSIFD.GPSLongitude in gps_data
+            ):
+                lat = gps_data[piexif.GPSIFD.GPSLatitude]
+                lat_ref = gps_data[piexif.GPSIFD.GPSLatitudeRef]
+                long = gps_data[piexif.GPSIFD.GPSLongitude]
+                long_ref = gps_data[piexif.GPSIFD.GPSLongitudeRef]
+
+                # Convert latitude to decimal degree
+                lat_dec = (
+                    float(lat[0][0]) / float(lat[0][1])
+                    + (float(lat[1][0]) / float(lat[1][1])) / 60
+                    + (float(lat[2][0]) / float(lat[2][1])) / 3600
+                )
+                if lat_ref == b"S":
+                    lat_dec = -lat_dec
+
+                # Convert longitude to decimal degree
+                long_dec = (
+                    float(long[0][0]) / float(long[0][1])
+                    + (float(long[1][0]) / float(long[1][1])) / 60
+                    + (float(long[2][0]) / float(long[2][1])) / 3600
+                )
+                if long_ref == b"W":
+                    long_dec = -long_dec
+
+                return lat_dec, long_dec
+            else:
+                logger.warning(f"No GPS information found in image: {image_file.name}")
+                return None, None
+        else:
+            logger.warning(f"No EXIF data found in image: {image_file.name}")
+            return None, None
+    except Exception as e:
+        logger.error(f"Error extracting GPS info from {image_file.name}: {str(e)}")
+        return None, None
 
 
 def process_image(image_file):
@@ -133,30 +174,18 @@ def process_image(image_file):
     image = Image.open(image_file)
     image = correct_image_orientation(image)
 
-    # Inicializar latitude e longitude como None
-    lat, lon = None, None
-
-    # Extração dos dados EXIF, somente para imagens JPEG
-    if image.format == 'JPEG':
-        try:
-            exif_data = image._getexif()
-            if exif_data is not None:
-                lat, lon = extract_gps_info(exif_data)
-            else:
-                logger.warning("No EXIF data found in the image.")
-        except AttributeError as e:
-            logger.error(f"Error accessing EXIF data: {e}")
-    else:
-        logger.warning(f"EXIF data is not supported for the image format: {image.format}")
+    # Extract GPS coordinates
+    lat, lon = extract_gps_info(image_file)
 
     _image = np.array(image)
-
     h_ori, w_ori = _image.shape[:2]
     image_resized = cv2.resize(_image, (720, 640), interpolation=cv2.INTER_AREA)
 
     results = net.predict(image_resized, conf=score_threshold)
     annotated_frame = results[0].plot()
-    image_pred = cv2.resize(annotated_frame, (w_ori, h_ori), interpolation=cv2.INTER_AREA)
+    image_pred = cv2.resize(
+        annotated_frame, (w_ori, h_ori), interpolation=cv2.INTER_AREA
+    )
 
     return _image, image_pred, lat, lon
 
@@ -164,10 +193,21 @@ def process_image(image_file):
 # Create map with detected poles
 def create_map(coordinates):
     m = folium.Map(location=[0, 0], zoom_start=2)
-    for lat, lon in coordinates:
+
+    for i, (lat, lon) in enumerate(coordinates):
         if lat is not None and lon is not None:
-            folium.Marker([lat, lon], popup="Pole detected").add_to(m)
+            # Create a custom icon for the marker
+            icon = folium.Icon(
+                color="red",  # Red color for visibility
+                icon="tower",  # Electric tower/pole icon
+                prefix="fa",  # Font Awesome icon prefix
+            )
+
+            # Add marker with popup showing the pole number
+            folium.Marker([lat, lon], popup=f"Pole {i+1}", icon=icon).add_to(m)
+
     return m
+
 
 # Check if new training data exists
 def check_new_data_exists(new_data_path):
@@ -180,26 +220,30 @@ def check_new_data_exists(new_data_path):
         return False
     return True
 
+
 # Fine-tune the model with new data
 def fine_tune_model(model, new_data_path, epochs=5, batch_size=32, imgsz=640):
     logger.info("Fine-tuning model with new data...")
-    
+
     if not check_new_data_exists(new_data_path):
-        st.error("No new training data found. Please ensure the directory contains data.")
+        st.error(
+            "No new training data found. Please ensure the directory contains data."
+        )
         return model  # Return the original model without fine-tuning
-    
+
     # Prepare the data path for training
     data_yaml_path = ROOT / "datasets" / "data.yaml"  # / "data.yaml"
-    
+
     # Generate the training command
     command = f"yolo task=detect mode=train model={MODEL_LOCAL_PATH} data={data_yaml_path} epochs={epochs} batch={batch_size} imgsz={imgsz}"
-    
+
     # Run the training command
     logger.info(f"Running command: {command}")
     os.system(command)  # Execute the command in the shell
-    
+
     logger.info("Model fine-tuning complete")
     return model
+
 
 # Save corrected data
 def save_corrected_data(image, correct_class, image_file):
@@ -209,6 +253,7 @@ def save_corrected_data(image, correct_class, image_file):
     image.save(image_save_path)
     logger.info(f"Saved corrected image to {image_save_path}")
     return image_save_path
+
 
 # Process images and display results
 if uploaded_files:
@@ -234,16 +279,17 @@ if uploaded_files:
             label="Download Predicted Image",
             data=download_image_byte,
             file_name=f"Predicted_{image_file.name}",
-            mime="image/png"
+            mime="image/png",
         )
 
         correct_class = st.selectbox(
-            "Correct Class (if wrong)",
-            CLASSES + ["No Change"], index=3
+            "Correct Class (if wrong)", CLASSES + ["No Change"], index=3
         )
 
         if correct_class != "No Change":
-            save_corrected_data(Image.fromarray(predicted_image), correct_class, image_file)
+            save_corrected_data(
+                Image.fromarray(predicted_image), correct_class, image_file
+            )
             st.write(f"Saved corrected image as {correct_class}")
 
         if lat is not None and lon is not None:
