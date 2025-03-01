@@ -1,3 +1,15 @@
+import sys, asyncio
+
+# For Windows 11: set the Proactor event loop policy for proper async support
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+# Ensure that an event loop is present (prevents "no running event loop" errors)
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
 import os
 import streamlit as st
 from pathlib import Path
@@ -147,4 +159,4 @@ if webrtc_ctx.state.playing:
         for detection in detection_results:
             st.write(f"Object detected with confidence: {detection[4]:.2f}")
     else:
-        st.write(f"No objects detected.")
+        st.write("No objects detected.")

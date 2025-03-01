@@ -24,7 +24,8 @@ st.sidebar.info(
     """
 )
 logo = "./imgs/logo.jpg"  # Certifique-se de que o caminho do logo está correto
-st.sidebar.image(logo, use_container_width=True)
+# Removi o parâmetro `use_container_width` para compatibilidade com a versão atual do Streamlit
+st.sidebar.image(logo)
 
 # Título da página
 st.markdown(f"<h1 style='text-align: center; color: {primary_color};'>⚡️ Pole Detection App</h1>", unsafe_allow_html=True)
@@ -85,8 +86,6 @@ with col1:
 
     # Exibir a imagem rotacionada no Streamlit
     st.image(rotated_image, caption="Imagem Original", use_column_width=True)
-    #st.image("./imgs/Low_tension_pole_3 (2).jpg", caption="Imagem Original", use_column_width=True)
-
 with col2:
     st.image("./imgs/Low_tension_pole_3.jpg", caption="Imagem com Detecção", use_column_width=True)
 
