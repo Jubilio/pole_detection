@@ -10,16 +10,17 @@ import time
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 from PIL import ImageDraw, ImageFont, Image
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+# Configure Streamlit page
 st.set_page_config(
     page_title="Pole Detection App",
-    page_icon="🏗️",  # Emoji for the pole detection app
+    page_icon="🏗️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 logo = "./imgs/logo.jpg"
 st.sidebar.image(logo)
@@ -125,10 +126,17 @@ rtc_configuration = RTCConfiguration(
 # WebRTC streamer
 webrtc_ctx = webrtc_streamer(
     key="pole-detection",
-    mode=WebRtcMode.SENDRECV,
+    mode=WebRtcMode.SENDRECV,  # Send and receive video stream for detection
     rtc_configuration=rtc_configuration,
     video_frame_callback=video_frame_callback,
-    media_stream_constraints={"video": True, "audio": False},
+    media_stream_constraints={
+        "video": {
+            "width": {"ideal": 1280},
+            "height": {"ideal": 720},
+            "frameRate": {"ideal": 30},
+        },
+        "audio": False
+    },
     async_processing=True,
 )
 
