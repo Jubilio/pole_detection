@@ -6,5 +6,8 @@ piexif
 folium
 streamlit
 streamlit-folium
-streamlit-webrtc
 av
+aioice==0.9.0
+aiortc==1.10.1
+streamlit==1.42.2
+streamlit-webrtc==0.47.9
