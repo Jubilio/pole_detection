@@ -10,3 +10,4 @@ av
 aioice
 aiortc
 streamlit-webrtc
+requests

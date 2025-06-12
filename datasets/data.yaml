@@ -1,6 +1,6 @@
-train: /home/mausse/Documents/Pole_Detection/pole_detection/datasets/train/images
-val: /home/mausse/Documents/Pole_Detection/pole_detection/datasets/valid/images
-test: /home/mausse/Documents/Pole_Detection/pole_detection/datasets/test/images
+train: datasets/train/images
+val: datasets/valid/images
+test: datasets/test/images
 
 nc: 3
 names: ['high_tension', 'low_tension', 'medium_tension']
