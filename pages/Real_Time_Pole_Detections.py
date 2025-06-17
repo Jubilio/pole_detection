@@ -1,4 +1,5 @@
-import sys, asyncio
+import sys
+import asyncio
 
 # For Windows 11: set the Proactor event loop policy for proper async support
 if sys.platform.startswith("win"):
